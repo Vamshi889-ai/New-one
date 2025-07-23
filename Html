@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Race Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #info { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; }
+        #minimap { position: absolute; bottom: 10px; right: 10px; width: 200px; height: 150px; background: rgba(0, 0, 0, 0.5); border: 2px solid white; }
+        #garage { position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.8); color: white; padding: 10px; }
+        #score { position: absolute; bottom: 10px; left: 10px; color: white; font-family: Arial; }
+    </style>
+</head>
+<body>
+    <div id="info">Speed: <span id="speed">0</span> km/h | Distance to car: <span id="distance">N/A</span></div>
+    <div id="minimap"></div>
+    <div id="garage">
+        <h3>Car Garage</h3>
+        <select id="carSelect" onchange="changeCar()">
+            <option value="f1">F1 Car</option>
+            <option value="street">Street Racer</option>
+            <option value="supercar">Supercar</option>
+        </select>
+        <button onclick="customizeCar()">Customize Color</button>
+    </div>
+    <div id="score">Score: <span id="scoreValue">0</span></div>
+    <script>
+        // Three.js setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Car model (simplified as a box)
+        let carGeometry = new THREE.BoxGeometry(2, 1, 0.5);
+        let carMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        let car = new THREE.Mesh(carGeometry, carMaterial);
+        scene.add(car);
+        car.position.set(0, 0, 0);
+
+        // Opponent car
+        let opponentCar = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.5), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+        scene.add(opponentCar);
+        opponentCar.position.set(0, 5, 0);
+
+        // Track (simplified plane)
+        const trackGeometry = new THREE.PlaneGeometry(100, 20);
+        const trackMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide });
+        const track = new THREE.Mesh(trackGeometry, trackMaterial);
+        track.rotation.x = Math.PI / 2;
+        scene.add(track);
+
+        // Camera setup
+        camera.position.set(0, 5, 10);
+        camera.lookAt(car.position);
+
+        // Game variables
+        let speed = 0;
+        let score = 0;
+        let distanceToOpponent = 5;
+        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        // ADAS AI Logic
+        function calculateADAS() {
+            distanceToOpponent = Math.abs(car.position.y - opponentCar.position.y);
+            document.getElementById('distance').textContent = distanceToOpponent.toFixed(1) + ' m';
+            document.getElementById('speed').textContent = (speed * 10).toFixed(0);
+
+            let advice = '';
+            if (distanceToOpponent < 3 && speed > 0.5) {
+                advice = 'Slow down, car is too close!';
+                score -= 10; // Penalize for risky driving
+            } else if (distanceToOpponent < 10 && speed > 0.3) {
+                advice = 'Prepare to overtake on the right.';
+                score += 20; // Reward for strategic overtaking
+            } else {
+                advice = 'Maintain speed, road clear.';
+                score += 5; // Reward for safe driving
+            }
+            document.getElementById('scoreValue').textContent = score;
+
+            // Voice guidance
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(advice);
+                speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Car customization
+        function changeCar() {
+            const carType = document.getElementById('carSelect').value;
+            carMaterial.color.set(carType === 'f1' ? 0xff0000 : carType === 'street' ? 0x0000ff : 0xffff00);
+        }
+
+        function customizeCar() {
+            const newColor = prompt('Enter color (hex, e.g., #ff0000):', '#ff0000');
+            if (newColor) carMaterial.color.set(newColor);
+        }
+
+        // Mini-map (simplified 2D canvas)
+        const minimap = document.getElementById('minimap');
+        const ctx = minimap.getContext('2d');
+        if (ctx) {
+            ctx.fillStyle = 'green';
+            ctx.fillRect(0, 0, 200, 150);
+            ctx.fillStyle = 'red';
+            ctx.fillRect(100, 75, 10, 5); // Player car
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(100, 65, 10, 5); // Opponent car
+        }
+
+        // Controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key in keys) keys[e.key] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keys) keys[e.key] = false;
+        });
+
+        // Game loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Car movement
+            if (keys.ArrowUp && speed < 1) speed += 0.01;
+            if (keys.ArrowDown && speed > -0.5) speed -= 0.01;
+            if (keys.ArrowLeft) car.position.x -= 0.1;
+            if (keys.ArrowRight) car.position.x += 0.1;
+            car.position.y += speed;
+
+            // Opponent movement (simple AI)
+            opponentCar.position.y += 0.2;
+            if (opponentCar.position.y > 10) opponentCar.position.y = -10;
+
+            // Update ADAS
+            calculateADAS();
+
+            // Update minimap
+            if (ctx) {
+                ctx.clearRect(0, 0, 200, 150);
+                ctx.fillStyle = 'green';
+                ctx.fillRect(0, 0, 200, 150);
+                ctx.fillStyle = 'red';
+                ctx.fillRect(100 + car.position.x * 10, 75 - car.position.y * 10, 10, 5);
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(100 + opponentCar.position.x * 10, 75 - opponentCar.position.y * 10, 10, 5);
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
